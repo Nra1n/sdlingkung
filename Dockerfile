@@ -1,4 +1,3 @@
-
 FROM node:22-bookworm-slim AS frontend
 
 WORKDIR /app
@@ -11,6 +10,8 @@ RUN npm run build
 
 
 FROM php:8.3-apache-bookworm
+
+RUN echo 'Acquire::http::Proxy "http://<internal>"; Acquire::Retries "5"; Acquire::http::Timeout "30"; Acquire::https::Timeout "30";' > /etc/apt/apt.conf.d/99retries
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
@@ -48,11 +49,9 @@ RUN composer install \
     --prefer-dist \
     --optimize-autoloader
 
-RUN sed -i 's/Listen 80/Listen 10000/' /etc/apache2/ports.conf \
-    && sed -i 's/:80>/:10000>/' /etc/apache2/sites-available/000-default.conf \
-    && sed -i 's!/var/www/html!/var/www/html/public!g' /etc/apache2/sites-available/000-default.conf \
-    && printf '<Directory /var/www/html/public>\nAllowOverride All\nRequire all granted\n</Directory>\n' > /etc/apache2/conf-available/laravel.conf \
-    && a2enconf laravel
+ENV APACHE_DOCUMENT_ROOT /var/www/html/public
+RUN sed -ri -e 's!/var/www/html!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/sites-available/000-default.conf
+RUN sed -ri -e 's!/var/www/html!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/apache2.conf /etc/apache2/conf-available/*.conf
 
 RUN mkdir -p storage/framework/cache \
     storage/framework/sessions \
@@ -61,6 +60,6 @@ RUN mkdir -p storage/framework/cache \
     bootstrap/cache \
     && chown -R www-data:www-data storage bootstrap/cache
 
-EXPOSE 10000
+EXPOSE 80
 
 CMD ["apache2-foreground"]
